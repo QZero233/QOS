@@ -14,7 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #undef off_t
@@ -28,11 +27,62 @@ typedef uint32_t physaddr_t;
 typedef uint32_t off_t;
 typedef int bool;
 
-#include <inc/mmu.h>
-#include <inc/fs.h>
+// #include <inc/mmu.h>
+// #include <inc/fs.h>
+
+// Bytes per file system block - same as page size
+#define BLKSIZE		4096
+#define BLKBITSIZE	(BLKSIZE * 8)
+
+// Maximum size of a filename (a single path component), including null
+// Must be a multiple of 4
+#define MAXNAMELEN	128
+
+// Maximum size of a complete pathname, including null
+#define MAXPATHLEN	1024
+
+// Number of block pointers in a File descriptor
+#define NDIRECT		10
+// Number of direct block pointers in an indirect block
+#define NINDIRECT	(BLKSIZE / 4)
+
+#define MAXFILESIZE	((NDIRECT + NINDIRECT) * BLKSIZE)
 
 #define ROUNDUP(n, v) ((n) - 1 + (v) - ((n) - 1) % (v))
 #define MAX_DIR_ENTS 128
+
+// An inode block contains exactly BLKFILES 'struct File's
+#define BLKFILES	(BLKSIZE / sizeof(struct File))
+
+// File types
+#define FTYPE_REG	0	// Regular file
+#define FTYPE_DIR	1	// Directory
+
+
+// File system super-block (both in-memory and on-disk)
+
+#define FS_MAGIC	0x4A0530AE	// related vaguely to 'J\0S!'
+
+struct File {
+	char f_name[MAXNAMELEN];	// filename
+	off_t f_size;			// file size in bytes
+	uint32_t f_type;		// file type
+
+	// Block pointers.
+	// A block is allocated iff its value is != 0.
+	uint32_t f_direct[NDIRECT];	// direct blocks
+	uint32_t f_indirect;		// indirect block
+
+	// Pad out to 256 bytes; must do arithmetic in case we're compiling
+	// fsformat on a 64-bit machine.
+	uint8_t f_pad[256 - MAXNAMELEN - 8 - 4*NDIRECT - 4];
+} __attribute__((packed));	// required only on some 64-bit machines
+
+struct Super {
+	uint32_t s_magic;		// Magic number: FS_MAGIC
+	uint32_t s_nblocks;		// Total number of blocks on disk
+	struct File s_root;		// Root directory node
+};
 
 struct Dir
 {
@@ -42,6 +92,7 @@ struct Dir
 };
 
 uint32_t nblocks;
+int diskfd;
 char *diskmap, *diskpos;
 struct Super *super;
 uint32_t *bitmap;
@@ -67,7 +118,7 @@ readn(int f, void *out, size_t n)
 		if (m < 0)
 			panic("read: %s", strerror(errno));
 		if (m == 0)
-			panic("read: Unexpected EOF");
+			panic("read: Unexpected EOF with p %d and n %d",p,n);
 		p += m;
 	}
 }
@@ -91,7 +142,7 @@ alloc(uint32_t bytes)
 void
 opendisk(const char *name)
 {
-	int r, diskfd, nbitblocks;
+	int r, nbitblocks;
 
 	if ((diskfd = open(name, O_RDWR | O_CREAT, 0666)) < 0)
 		panic("open %s: %s", name, strerror(errno));
@@ -100,13 +151,12 @@ opendisk(const char *name)
 	    || (r = ftruncate(diskfd, nblocks * BLKSIZE)) < 0)
 		panic("truncate %s: %s", name, strerror(errno));
 
-	if ((diskmap = mmap(NULL, nblocks * BLKSIZE, PROT_READ|PROT_WRITE,
-			    MAP_SHARED, diskfd, 0)) == MAP_FAILED)
-		panic("mmap %s: %s", name, strerror(errno));
-
-	close(diskfd);
-
+	// For windows, there is no native mmap
+	// So we store everything in memory
+	// And write to disk when finish
+	diskmap=malloc(nblocks * BLKSIZE);
 	diskpos = diskmap;
+
 	alloc(BLKSIZE);
 	super = alloc(BLKSIZE);
 	super->s_magic = FS_MAGIC;
@@ -127,8 +177,18 @@ finishdisk(void)
 	for (i = 0; i < blockof(diskpos); ++i)
 		bitmap[i/32] &= ~(1<<(i%32));
 
-	if ((r = msync(diskmap, nblocks * BLKSIZE, MS_SYNC)) < 0)
-		panic("msync: %s", strerror(errno));
+	// Here we need to write everything in memory back to disk
+	int total_written=0;
+	int target=nblocks * BLKSIZE;
+	int len;
+
+	while(total_written < target) {
+		len = write(diskfd,diskmap+total_written,target-total_written);
+		if(len < 0) {
+			panic("Error when writting back");
+		}
+		total_written += len;
+	}
 }
 
 void
@@ -186,7 +246,8 @@ writefile(struct Dir *dir, const char *name)
 	const char *last;
 	char *start;
 
-	if ((fd = open(name, O_RDONLY)) < 0)
+	// Here must open it in binary mode
+	if ((fd = open(name, O_RDONLY | O_BINARY)) < 0)
 		panic("open %s: %s", name, strerror(errno));
 	if ((r = fstat(fd, &st)) < 0)
 		panic("stat %s: %s", name, strerror(errno));
@@ -203,6 +264,7 @@ writefile(struct Dir *dir, const char *name)
 
 	f = diradd(dir, FTYPE_REG, last);
 	start = alloc(st.st_size);
+	printf("Try to read %s %d\n",name,st.st_size);
 	readn(fd, start, st.st_size);
 	finishfile(f, blockof(start), st.st_size);
 	close(fd);

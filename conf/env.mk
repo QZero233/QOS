@@ -12,9 +12,22 @@ V = @
 # out the following line to use those tools (as opposed to the i386-jos-elf
 # tools that the 6.828 make system looks for by default).
 #
-# GCCPREFIX=''
+GCCPREFIX=i386-elf-
 
 # If the makefile cannot find your QEMU binary, uncomment the
 # following line and set it to the full path to QEMU.
 #
-# QEMU=
+QEMU=D:\OS\QEMU\qemu-system-i386.exe
+
+# Command of 'mkdir -p $(@D)' (on Windows, we do not use -p, and if dir exists, it will report error)
+MAKE_DIR_D = @if not exist $(subst /,\,$(@D)) (mkdir $(subst /,\,$(@D)))
+
+# Add -fno-stack-protector or not
+# Assign the variable with 1 to add
+# NOTE: I make -fno-stack-protector option enabled, because I've checked my i386-elf-gcc and it supports this option
+# If anything goes wrong, disable it
+GCC_ENABLE_NO_STACK_PROTECT = 1
+
+# Add -D qemu.log for QEMUOPT or not
+# Assign 1 to add
+QEMU_SUPPORT_LOG = 1

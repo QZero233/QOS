@@ -59,15 +59,15 @@ LWIP_OBJFILES := $(patsubst %.S, $(OBJDIR)/%.o, $(LWIP_OBJFILES))
 
 $(OBJDIR)/net/lwip/%.o: net/lwip/%.c $(OBJDIR)/.vars.USER_CFLAGS
 	@echo + cc[USER] $<
-	$(V)mkdir -p $(@D)
+	$(MAKE_DIR_D)
 	$(V)$(CC) -nostdinc $(USER_CFLAGS) $(USER_INC) -c -o $@ $<
 
 $(OBJDIR)/net/lwip/%.o: net/lwip/%.S $(OBJDIR)/.vars.USER_CFLAGS
 	@echo + as[USER] $<
-	@mkdir -p $(@D)
+	$(MAKE_DIR_D)
 	$(V)$(CC) -nostdinc $(USER_CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/lib/liblwip.a: $(LWIP_OBJFILES)
 	@echo + ar $@
-	$(V)mkdir -p $(@D)
+	$(MAKE_DIR_D)
 	$(V)$(AR) r $@ $(LWIP_OBJFILES)
