@@ -21,6 +21,7 @@ QEMU=D:\OS\QEMU\qemu-system-i386.exe
 
 # Command of 'mkdir -p $(@D)' (on Windows, we do not use -p, and if dir exists, it will report error)
 MAKE_DIR_D = @if not exist $(subst /,\,$(@D)) (mkdir $(subst /,\,$(@D)))
+#MAKE_DIR_D = @mkdir $(subst /,\,$(@D)) || true
 
 # Add -fno-stack-protector or not
 # Assign the variable with 1 to add

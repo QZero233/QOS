@@ -189,15 +189,15 @@ IMAGES = $(OBJDIR)/kern/kernel.img
 QEMUOPTS += -smp $(CPUS)
 QEMUOPTS += -drive file=$(OBJDIR)/fs/fs.img,index=1,media=disk,format=raw
 IMAGES += $(OBJDIR)/fs/fs.img
-# TODO make port forward
-# -redir tcp:$(PORT7)::7 -redir tcp:$(PORT80)::80 -redir udp:$(PORT7)::7
-# TODO add tcp dump
-# -net dump,file=qemu.pcap
-QEMUOPTS += -net user -net nic,model=e1000
+
+# Here, host forward means when I visit the port $(PORT80) of *localhost*, the traffic will be redirected to the QEMU
+# So, just visit 127.0.0.1:$(PORT80) on chrome of Windows will be fine
+QEMUOPTS += -netdev user,id=net0,hostfwd=tcp::$(PORT7)-:7,hostfwd=tcp::$(PORT80)-:80,hostfwd=udp::$(PORT7)-:7
+QEMUOPTS += -device e1000,netdev=net0
+QEMUOPTS += -object filter-dump,id=f1,netdev=net0,file=qemu.pcap
 QEMUOPTS += $(QEMUEXTRA)
 
 .gdbinit: .gdbinit.tmpl
-	echo PORT IS $(GDBPORT)
 	sed "s/localhost:1234/localhost:$(GDBPORT)/" < $^ > $@
 
 gdb:

@@ -118,7 +118,7 @@ readn(int f, void *out, size_t n)
 		if (m < 0)
 			panic("read: %s", strerror(errno));
 		if (m == 0)
-			panic("read: Unexpected EOF with p %d and n %d",p,n);
+			panic("read: Unexpected EOF");
 		p += m;
 	}
 }
@@ -144,7 +144,8 @@ opendisk(const char *name)
 {
 	int r, nbitblocks;
 
-	if ((diskfd = open(name, O_RDWR | O_CREAT, 0666)) < 0)
+	// NOTE: Here, on Windows, also needs O_BINARY !!!!
+	if ((diskfd = open(name, O_RDWR | O_CREAT | O_BINARY, 0666)) < 0)
 		panic("open %s: %s", name, strerror(errno));
 
 	if ((r = ftruncate(diskfd, 0)) < 0
@@ -189,6 +190,8 @@ finishdisk(void)
 		}
 		total_written += len;
 	}
+
+	close(diskfd);
 }
 
 void
@@ -264,7 +267,7 @@ writefile(struct Dir *dir, const char *name)
 
 	f = diradd(dir, FTYPE_REG, last);
 	start = alloc(st.st_size);
-	printf("Try to read %s %d\n",name,st.st_size);
+	printf("Try to read %s %ld\n",name,st.st_size);
 	readn(fd, start, st.st_size);
 	finishfile(f, blockof(start), st.st_size);
 	close(fd);
